@@ -150,8 +150,8 @@ class Droplet(JsonfyMixIn):
 
     def power_on(self):
         assert self.status == 'off', 'Can only power on a closed one.'
-        json = self.manager.power_on_droplet(self.id)
-        self.update_attr(json)
+        self.manager.power_on_droplet(self.id)
+        self.update_attr()
 
     def ensure_powered_on(self, wait=True, wait_timeout=300):
         if self.is_powered_on():
@@ -169,10 +169,12 @@ class Droplet(JsonfyMixIn):
             raise TimeoutError('Wait for droplet running timeout', self.id)
 
     def power_off(self):
-        return self.manager.power_off_droplet(self.id)
+        self.manager.power_off_droplet(self.id)
+        self.update_attr()
 
     def power_cycle(self):
-        return self.manager.power_cycle_droplet(self.id)
+        self.manager.power_cycle_droplet(self.id)
+        self.update_attr()
 
     def destroy(self):
         return self.manager.destroy_droplet(self.id)
@@ -285,21 +287,23 @@ def core(module):
             module.exit_json(changed=True, event_id=event_json['event_id'])
 
         elif state == 'stopped':
-            droplet = Droplet.find(getkeyordie('id'))
+            id = getkeyordie('id')
+            droplet = Droplet.find(id)
             if not droplet:
-                module.fail_json(msg='The droplet(id: %s) is not found.' % getkeyordie('id'))
+                module.fail_json(msg='The droplet(id: %s) is not found.' % id)
             if droplet.is_powered_off():
-                module.exit_json(changed=False)
+                module.exit_json(changed=False, droplet=droplet.to_json())
             else:
-                event_json = droplet.power_off()
-                module.exit_json(changed=True, event_id=event_json['event_id'])
+                droplet.power_off()
+                module.exit_json(changed=True, droplet=droplet.to_json())
 
         elif state == 'restarted':
-            droplet = Droplet.find(getkeyordie('id'))
+            id = getkeyordie('id')
+            droplet = Droplet.find(id)
             if not droplet:
-                module.fail_json(msg='The droplet(id: %s) is not found.' % getkeyordie('id'))
-            event_json = droplet.power_cycle()
-            module.exit_json(changed=True, event_id=event_json['event_id'])
+                module.fail_json(msg='The droplet(id: %s) is not found.' % id)
+            droplet.power_cycle()
+            module.exit_json(changed=True, droplet=droplet.to_json())
 
 
     elif command == 'ssh':
