@@ -32,7 +32,7 @@ options:
     description:
      - Indicate desired state of the target.
     required: true
-    choices: ['present', 'active', 'absent', 'deleted']
+    choices: ['present', 'active', 'absent', 'deleted', 'stopped', 'restarted']
   client_id: description:
      - Digital Ocean manager id.
   api_key:
@@ -130,6 +130,9 @@ class Droplet(JsonfyMixIn):
     def is_powered_on(self):
         return self.status == 'active'
 
+    def is_powered_off(self):
+        return self.status == 'off'
+
     def update_attr(self, attrs=None, times=5):
         if attrs:
             for k, v in attrs.iteritems():
@@ -164,6 +167,12 @@ class Droplet(JsonfyMixIn):
                 if self.is_powered_on():
                     return
             raise TimeoutError('Wait for droplet running timeout', self.id)
+
+    def power_off(self):
+        return self.manager.power_off_droplet(self.id)
+
+    def power_cycle(self):
+        return self.manager.power_cycle_droplet(self.id)
 
     def destroy(self):
         return self.manager.destroy_droplet(self.id)
@@ -270,9 +279,28 @@ def core(module):
         elif state in ('absent', 'deleted'):
             droplet = Droplet.find(getkeyordie('id'))
             if not droplet:
-                module.exit_json(changed=False, msg='The droplet is not found.')
+                module.exit_json(changed=False,
+                        msg='The droplet(id: %s) is not found.' % getkeyordie('id'))
             event_json = droplet.destroy()
             module.exit_json(changed=True, event_id=event_json['event_id'])
+
+        elif state == 'stopped':
+            droplet = Droplet.find(getkeyordie('id'))
+            if not droplet:
+                module.fail_json(msg='The droplet(id: %s) is not found.' % getkeyordie('id'))
+            if droplet.is_powered_off():
+                module.exit_json(changed=False)
+            else:
+                event_json = droplet.power_off()
+                module.exit_json(changed=True, event_id=event_json['event_id'])
+
+        elif state == 'restarted':
+            droplet = Droplet.find(getkeyordie('id'))
+            if not droplet:
+                module.fail_json(msg='The droplet(id: %s) is not found.' % getkeyordie('id'))
+            event_json = droplet.power_cycle()
+            module.exit_json(changed=True, event_id=event_json['event_id'])
+
 
     elif command == 'ssh':
         SSH.setup(client_id, api_key)
@@ -295,8 +323,10 @@ def core(module):
 def main():
     module = AnsibleModule(
         argument_spec = dict(
-            command = dict(required=True, choices=['droplet', 'ssh'], default='droplet'),
-            state = dict(required=True, choices=['active', 'present', 'absent', 'deleted'], default='present'),
+            command = dict(required=True, choices=['droplet', 'ssh']),
+            state = dict(required=True, choices=['active', 'present',
+                                        'absent', 'deleted', 'stopped',
+                                        'restarted']),
             client_id = dict(aliases=['CLIENT_ID'], no_log=True),
             api_key = dict(aliases=['API_KEY'], no_log=True),
             name = dict(type='str'),
